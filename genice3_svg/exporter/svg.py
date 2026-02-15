@@ -6,7 +6,7 @@ Usage:
     % genice3 CS2 -r 3 3 3 -e svg[rotatex=30,shadow] > CS2.svg
 
 Options:
-    --rotate X5 Y5  build a rotation matrix from the given angles
+    --rotate y5 x5       rotation axes+angles (CLI: space or comma). API: list ["y5","x5"]
     --polygon        Draw polygons instead of a ball and stick model.
     --arrows         Draw the hydrogen bonds with arrows.
     --shadow #8881   Draw shadows behind balls.
@@ -149,9 +149,31 @@ def draw_cell(prims, cellmat, origin=np.zeros(3)):
     )
 
 
-def rotation_processor(x: tuple) -> np.array:
+def _normalize_rotate(value) -> list:
+    """
+    rotate オプションを "y5", "x5" のリストに正規化する。
+    CLI: --rotate y5 x5 または --rotate y5,x5。API: リスト ["y5","x5"]。
+    """
+    if isinstance(value, str):
+        return [s.strip() for s in re.split(r"[\s,]+", value) if s.strip()]
+    if isinstance(value, (list, tuple)):
+        out = []
+        for item in value:
+            s = item if isinstance(item, str) else str(item)
+            for part in re.split(r"[\s,]+", s):
+                if part.strip():
+                    out.append(part.strip())
+        return out
+    return [str(value)]
+
+
+def rotation_processor(x) -> np.ndarray:
+    """axis+angle のリスト (e.g. ["y5", "x5"]) から回転行列を生成。"""
+    items = _normalize_rotate(x)
     mat = np.eye(3)
-    for value in x:
+    for value in items:
+        if not value:
+            continue
         axis = value[0]
         angle = radians(float(value[1:]))
         cosx = cos(angle)
@@ -189,7 +211,7 @@ def parse_options(options: Dict[str, Any]) -> Tuple[Dict[str, Any], Dict[str, An
     """
     svgプラグインのオプションを処理
 
-    --rotate X5 Y5  build a rotation matrix from the given angles
+    --rotate y5 x5       rotation (CLI: y5 x5 or y5,x5). API: list ["y5","x5"]
     --polygon        Draw polygons instead of a ball and stick model.
     --arrows         Draw the hydrogen bonds with arrows.
     --shadow #8881   Draw shadows behind balls.
