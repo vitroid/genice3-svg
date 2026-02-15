@@ -6,20 +6,18 @@ Usage:
     % genice3 CS2 -r 3 3 3 -e svg[rotatex=30,shadow] > CS2.svg
 
 Options:
-    rotatex=30
-    rotatey=30
-    rotatez=30
-    polygon        Draw polygons instead of a ball and stick model.
-    arrows         Draw the hydrogen bonds with arrows.
-    shadow=#8881   Draw shadows behind balls.
-    bg=#f00        Specify the background color.
-    O=0.06
-    H=0            Size of the hydrogen atom (relative to that of oxygen)
-    HB=0.4         Radius of HB relative to that of oxygem
-    OH=0.5         Radius of OH colvalent bond relative to that of oxygem
-    width=0        (Pixel)
-    height=0       (Pixel)
-    margin=0       (Pixel)
+    --rotate X5 Y5  build a rotation matrix from the given angles
+    --polygon        Draw polygons instead of a ball and stick model.
+    --arrows         Draw the hydrogen bonds with arrows.
+    --shadow #8881   Draw shadows behind balls.
+    --bgcolor #f00   Specify the background color.
+    --O 0.06         Radius of the oxygen atom
+    --H 0            Size of the hydrogen atom (relative to that of oxygen)
+    --HB 0.4         Radius of HB relative to that of oxygem
+    --OH 0.5         Radius of OH colvalent bond relative to that of oxygem
+    --width 0        (Pixel)
+    --height 0       (Pixel)
+    --margin 0       (Pixel)
 """
 
 # from genice2.molecules import serialize
@@ -40,6 +38,7 @@ from io import TextIOWrapper
 from genice3.exporter import (
     parse_water_model_option,
 )
+from typing import Dict, Any, Tuple
 
 desc = {
     "ref": {},
@@ -143,46 +142,82 @@ def draw_cell(prims, cellmat, origin=np.zeros(3)):
     )
 
 
-from genice3.dictparser import parse_dict_options
+def rotation_processor(x: tuple) -> np.array:
+    mat = np.eye(3)
+    for value in x:
+        axis = value[0]
+        angle = radians(float(value[1:]))
+        cosx = cos(angle)
+        sinx = sin(angle)
+        if axis in "xX":
+            R = np.array([[1, 0, 0], [0, cosx, sinx], [0, -sinx, cosx]])
+        elif axis in "yY":
+            R = np.array([[cosx, 0, -sinx], [0, 1, 0], [sinx, 0, cosx]])
+        elif axis in "zZ":
+            R = np.array([[cosx, sinx, 0], [-sinx, cosx, 0], [0, 0, 1]])
+        else:
+            assert False, "  Wrong options."
+        mat = mat @ R
+    return mat
 
-type_map = dict(
-    encode=bool,
-    poly=bool,
-    shadow=str,
-    oxygen=float,
-    HB=float,
-    OH=float,
-    hydrogen=float,
-    arrows=bool,
-    bgcolor=str,
-    proj=np.array,
-    width=int,
-    height=int,
-    margin=int,
-    unprocessed=dict,
+from genice3.cli.pool_parser import (
+    parse_options_generic,
+    OPTION_TYPE_STRING,
+    OPTION_TYPE_KEYVALUE,
+    OPTION_TYPE_TUPLE,
+    OPTION_TYPE_FLAG,
 )
 
-defaults = dict(
-    encode=True,
-    poly=False,
-    shadow=None,
-    oxygen=0.06,
-    HB=0.4,
-    OH=0.5,
-    hydrogen=0,
-    arrows=False,
-    bgcolor=None,
-    proj=np.array([[1.0, 0, 0], [0, 1, 0], [0, 0, 1]]),
-    width=0,
-    height=0,
-    margin=0,
-    unprocessed=dict(),
-)
+def parse_options(options: Dict[str, Any]) -> Tuple[Dict[str, Any], Dict[str, Any]]:
+    """
+    svgプラグインのオプションを処理
 
-list_keys = dict(rotate=",")
+    --rotate X5 Y5  build a rotation matrix from the given angles
+    --polygon        Draw polygons instead of a ball and stick model.
+    --arrows         Draw the hydrogen bonds with arrows.
+    --shadow #8881   Draw shadows behind balls.
+    --bgcolor #f00   Specify the background color.
+    --O 0.06         Radius of the oxygen atom
+    --H 0            Size of the hydrogen atom (relative to that of oxygen)
+    --HB 0.4         Radius of HB (relative to that of oxygem)
+    --OH 0.5         Radius of OH colvalent bond (relative to that of oxygem)
+    --width 0        (Pixel)
+    --height 0       (Pixel)
+    --margin 0       (Pixel)
+
+    """
+    # オプションの型定義
+    option_specs = {
+        "rotate": OPTION_TYPE_TUPLE,
+        "polygon": OPTION_TYPE_FLAG,
+        "arrows": OPTION_TYPE_FLAG,
+        "shadow": OPTION_TYPE_STRING,
+        "bgcolor": OPTION_TYPE_STRING,
+        "O": OPTION_TYPE_STRING,
+        "H": OPTION_TYPE_STRING,
+        "HB": OPTION_TYPE_STRING,
+        "OH": OPTION_TYPE_STRING,
+        "width": OPTION_TYPE_STRING,
+        "height": OPTION_TYPE_STRING,
+        "margin": OPTION_TYPE_STRING,
+    }
+
+    post_processors = {
+        # "rotate": lambda x: tuple(float(v) for v in x),
+        "width": lambda x: int(x),
+        "height": lambda x: int(x),
+        "margin": lambda x: int(x),
+        "O": lambda x: float(x),
+        "H": lambda x: float(x),
+        "HB": lambda x: float(x),
+        "OH": lambda x: float(x),
+        "rotate": lambda x: rotation_processor(x),
+    }
+    return parse_options_generic(options, option_specs, post_processors)
 
 
-def parse_options(**kwargs):
+
+def parse_options_old(**kwargs):
     options = parse_dict_options(
         kwargs, type_map=type_map, defaults=defaults, list_keys=list_keys
     )
@@ -320,7 +355,7 @@ def parse_options(**kwargs):
             R = np.array([[cosx, sinx, 0], [-sinx, cosx, 0], [0, 0, 1]])
         else:
             raise ValueError(f"  Wrong options: {value}")
-        options.proj = options.proj @ R
+        options.rotate = options.rotate @ R
 
     if options.unprocessed:
         logger.warning(f"Unprocessed options: {options.unprocessed}")
@@ -332,27 +367,43 @@ def parse_options(**kwargs):
         options.height = int(options.height)
     return options
 
+@dataclass
+class Options:
+    rotate: tuple =("x0",)
+    O: float = 0.06
+    H: float = 0   
+    HB: float = 0.4
+    OH: float = 0.5
+    width: int = 0
+    height: int = 0
+    margin: int = 0
+    encode: bool = True
+    command_line:str = ""
+    polygon: bool = False
+    arrows: bool = False
+    shadow: str = "#8881"
+    bgcolor: str = "#ff0000"
 
-def render_lattice_sites(genice: GenIce3, renderer: Render, options: dict):
+def render_lattice_sites(genice: GenIce3, renderer: Render, options: Options):
     "A. Output molecular positions in PNG/SVG format."
     logger = getLogger()
-    if options.hydrogen > 0 or options.arrows:
+    if options.H > 0 or options.arrows:
         # draw everything in hook6
         return
     offset = np.zeros(3)
 
     for i in range(3):
-        options.proj[i] /= np.linalg.norm(options.proj[i])
-    options.proj = np.linalg.inv(options.proj)
+        options.rotate[i] /= np.linalg.norm(options.rotate[i])
+    options.rotate = np.linalg.inv(options.rotate)
 
     cellmat = genice.cell
-    projected = cellmat @ options.proj
+    projected = cellmat @ options.rotate
     pos = genice.lattice_sites
     prims = []
-    RO = options.oxygen  # nm
-    RHB = options.oxygen * options.HB  # nm
+    RO = options.O  # nm
+    RHB = options.O * options.HB  # nm
     xmin, xmax, ymin, ymax = draw_cell(prims, projected)
-    if options.poly:
+    if options.polygon:
         for ring in cycles_iter(genice.graph, 8, pos=pos):
             nedges = len(ring)
             deltas = np.zeros((nedges, 3))
@@ -469,17 +520,17 @@ def render_atomic_sites(genice: GenIce3, renderer: Render, options: dict):
 
     # Projection to the viewport
     for i in range(3):
-        options.proj[i] /= np.linalg.norm(options.proj[i])
-    options.proj = np.linalg.inv(options.proj)
+        options.rotate[i] /= np.linalg.norm(options.rotate[i])
+    options.rotate = np.linalg.inv(options.rotate)
 
     cellmat = genice.cell
-    projected = cellmat @ options.proj
+    projected = cellmat @ options.rotate
 
     prims = []
-    RO = options.oxygen  # nm
-    RHB = options.oxygen * options.HB  # nm
-    ROH = options.oxygen * options.OH  # nm
-    RH = options.oxygen * options.hydrogen  # nm
+    RO = options.O  # nm
+    RHB = options.O * options.HB  # nm
+    ROH = options.O * options.OH  # nm
+    RH = options.O * options.H  # nm
     xmin, xmax, ymin, ymax = draw_cell(prims, projected)
     if options.arrows:
         pos = genice.lattice_sites
@@ -510,14 +561,14 @@ def render_atomic_sites(genice: GenIce3, renderer: Render, options: dict):
             O = water.sites[0]
             H0 = water.sites[1]
             H1 = water.sites[2]
-            prims.append([O @ options.proj, "C", RO, filloxygen])  # circle
-            prims.append([H0 @ options.proj, "C", RH, fillhydrogen])  # circle
-            prims.append([H1 @ options.proj, "C", RH, fillhydrogen])  # circle
+            prims.append([O @ options.rotate, "C", RO, filloxygen])  # circle
+            prims.append([H0 @ options.rotate, "C", RH, fillhydrogen])  # circle
+            prims.append([H1 @ options.rotate, "C", RH, fillhydrogen])  # circle
             # clipped cylinder
-            clipped = clip_cyl(O @ options.proj, RO, H0 @ options.proj, RH, ROH)
+            clipped = clip_cyl(O @ options.rotate, RO, H0 @ options.rotate, RH, ROH)
             if clipped is not None:
                 prims.append(clipped + [ROH, lineOH])
-            clipped = clip_cyl(O @ options.proj, RO, H1 @ options.proj, RH, ROH)
+            clipped = clip_cyl(O @ options.rotate, RO, H1 @ options.rotate, RH, ROH)
             if clipped is not None:
                 prims.append(clipped + [ROH, lineOH])
         # draw HBs
@@ -531,11 +582,11 @@ def render_atomic_sites(genice: GenIce3, renderer: Render, options: dict):
                 rr0 = d0 @ d0
                 rr1 = d1 @ d1
                 if rr0 < rr1 and rr0 < 0.245**2:
-                    clipped = clip_cyl(O @ options.proj, RO, H0 @ options.proj, RH, RHB)
+                    clipped = clip_cyl(O @ options.rotate, RO, H0 @ options.rotate, RH, RHB)
                     if clipped is not None:
                         prims.append(clipped + [RHB, lineHB])
                 elif rr1 < rr0 and rr1 < 0.245**2:
-                    clipped = clip_cyl(O @ options.proj, RO, H1 @ options.proj, RH, RHB)
+                    clipped = clip_cyl(O @ options.rotate, RO, H1 @ options.rotate, RH, RHB)
                     if clipped is not None:
                         prims.append(clipped + [RHB, lineHB])
                 # else:
@@ -558,10 +609,11 @@ def render_atomic_sites(genice: GenIce3, renderer: Render, options: dict):
     return output
 
 
+
 def dumps(genice: GenIce3, **kwargs):
-    options = parse_options(**kwargs)
+    options = Options(**kwargs)
     renderer = Render
-    if options.hydrogen > 0 or options.arrows:
+    if options.H > 0 or options.arrows:
         return render_atomic_sites(genice, renderer, options)
     else:
         return render_lattice_sites(genice, renderer, options)
@@ -569,4 +621,9 @@ def dumps(genice: GenIce3, **kwargs):
 
 def dump(genice: GenIce3, file: TextIOWrapper = sys.stdout, **kwargs):
     file.write(dumps(genice, **kwargs))
+
+
+
+
+
 

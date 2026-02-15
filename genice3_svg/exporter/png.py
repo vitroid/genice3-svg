@@ -37,6 +37,8 @@ desc = {
 }
 
 
+
+
 def dumps(genice: GenIce3, **kwargs):
     kwargs["encode"] = False
     options = parse_options(**kwargs)
@@ -52,4 +54,9 @@ def dump(genice: GenIce3, file=sys.stdout, **kwargs):
     # dumpsの返すImageをbinaryデータとして書き込みたい。
     image = dumps(genice, **kwargs)
     image.save(file, format="PNG")
+
+
+
+
+
 
