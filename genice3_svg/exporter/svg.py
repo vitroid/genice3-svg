@@ -169,6 +169,8 @@ def _normalize_rotate(value) -> list:
 
 def rotation_processor(x) -> np.ndarray:
     """axis+angle のリスト (e.g. ["y5", "x5"]) から回転行列を生成。"""
+    if isinstance(x, np.ndarray) and x.shape == (3, 3):
+        return x  # 既に行列（CLI 経由で処理済み）
     items = _normalize_rotate(x)
     mat = np.eye(3)
     for value in items:
@@ -228,6 +230,9 @@ def parse_options(options: Dict[str, Any]) -> Tuple[Dict[str, Any], Dict[str, An
         (処理したオプション, 処理しなかったオプション)。未処理は次のプラグインへ。
     """
     options = dict(options)
+    # API 用エイリアス: hydrogen -> H
+    if "hydrogen" in options and "H" not in options:
+        options["H"] = options["hydrogen"]
     option_specs = {
         d.name: d.parse_type
         for d in SVG_OPTION_DEFS
@@ -497,7 +502,11 @@ def render_atomic_sites(genice: GenIce3, renderer: Render, options: dict):
 
 
 def dumps(genice: GenIce3, **kwargs):
-    options = Options(**kwargs)
+    """
+    API/CLI の両方から呼ばれる。kwargs を parse_options で正規化してから Options に渡す。
+    """
+    processed, _ = parse_options(kwargs)
+    options = Options(**processed)
     renderer = Render
     if options.H > 0 or options.arrows:
         return render_atomic_sites(genice, renderer, options)
