@@ -31,12 +31,19 @@ from collections import defaultdict
 from logging import getLogger
 from math import pi, cos, sin, radians
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from genice3.genice import GenIce3
 import sys
 from io import TextIOWrapper
 from genice3.exporter import (
     parse_water_model_option,
+)
+from genice3.cli.pool_parser import (
+    OptionDef,
+    parse_options_generic,
+    OPTION_TYPE_STRING,
+    OPTION_TYPE_TUPLE,
+    OPTION_TYPE_FLAG,
 )
 from typing import Dict, Any, Tuple
 
@@ -160,13 +167,23 @@ def rotation_processor(x: tuple) -> np.array:
         mat = mat @ R
     return mat
 
-from genice3.cli.pool_parser import (
-    parse_options_generic,
-    OPTION_TYPE_STRING,
-    OPTION_TYPE_KEYVALUE,
-    OPTION_TYPE_TUPLE,
-    OPTION_TYPE_FLAG,
+
+# svg プラグインが受け取るオプション定義。追加・削除はここだけ行えばよい。
+SVG_OPTION_DEFS = (
+    OptionDef("rotate", parse_type=OPTION_TYPE_TUPLE),
+    OptionDef("polygon", parse_type=OPTION_TYPE_FLAG),
+    OptionDef("arrows", parse_type=OPTION_TYPE_FLAG),
+    OptionDef("shadow", parse_type=OPTION_TYPE_STRING),
+    OptionDef("bgcolor", parse_type=OPTION_TYPE_STRING),
+    OptionDef("O", parse_type=OPTION_TYPE_STRING),
+    OptionDef("H", parse_type=OPTION_TYPE_STRING),
+    OptionDef("HB", parse_type=OPTION_TYPE_STRING),
+    OptionDef("OH", parse_type=OPTION_TYPE_STRING),
+    OptionDef("width", parse_type=OPTION_TYPE_STRING),
+    OptionDef("height", parse_type=OPTION_TYPE_STRING),
+    OptionDef("margin", parse_type=OPTION_TYPE_STRING),
 )
+
 
 def parse_options(options: Dict[str, Any]) -> Tuple[Dict[str, Any], Dict[str, Any]]:
     """
@@ -185,25 +202,17 @@ def parse_options(options: Dict[str, Any]) -> Tuple[Dict[str, Any], Dict[str, An
     --height 0       (Pixel)
     --margin 0       (Pixel)
 
+    Returns:
+        (処理したオプション, 処理しなかったオプション)。未処理は次のプラグインへ。
     """
-    # オプションの型定義
+    options = dict(options)
     option_specs = {
-        "rotate": OPTION_TYPE_TUPLE,
-        "polygon": OPTION_TYPE_FLAG,
-        "arrows": OPTION_TYPE_FLAG,
-        "shadow": OPTION_TYPE_STRING,
-        "bgcolor": OPTION_TYPE_STRING,
-        "O": OPTION_TYPE_STRING,
-        "H": OPTION_TYPE_STRING,
-        "HB": OPTION_TYPE_STRING,
-        "OH": OPTION_TYPE_STRING,
-        "width": OPTION_TYPE_STRING,
-        "height": OPTION_TYPE_STRING,
-        "margin": OPTION_TYPE_STRING,
+        d.name: d.parse_type
+        for d in SVG_OPTION_DEFS
+        if d.parse_type is not None
     }
-
     post_processors = {
-        # "rotate": lambda x: tuple(float(v) for v in x),
+        "shadow": lambda x: "#8881" if x is True else x,
         "width": lambda x: int(x),
         "height": lambda x: int(x),
         "margin": lambda x: int(x),
@@ -217,159 +226,14 @@ def parse_options(options: Dict[str, Any]) -> Tuple[Dict[str, Any], Dict[str, An
 
 
 
-def parse_options_old(**kwargs):
-    options = parse_dict_options(
-        kwargs, type_map=type_map, defaults=defaults, list_keys=list_keys
-    )
-    logger = getLogger()
-    # encode = True  # valid for png.
-    # poly = False
-    # shadow = None
-    # oxygen = 0.06  # absolute radius in nm
-    # HB = 0.4  # radius relative to the oxygen
-    # OH = 0.5  # radius relative to the oxygen
-    # hydrogen = 0  # radius relative to the oxygen
-    # arrows = False
-    # bgcolor = None
-    # proj = np.array([[1.0, 0, 0], [0, 1, 0], [0, 0, 1]])
-    # width = 0
-    # height = 0
-    # margin = 0  # margin around the cell cube
-    # unprocessed = dict()
-    # for key, value in kwargs.items():
-    #     logger.info(f"  Option with arguments: {key} := {value}")
-    #     if key == "rotmat":
-    #         value = re.search(r"\[([-0-9,.]+)\]", value).group(1)
-    #         proj = np.array([float(x) for x in value.split(",")]).reshape(3, 3)
-    #     elif key == "rotatex":
-    #         logger.warning(
-    #             "The rotatey option is deprecated. Use rotate option instead."
-    #         )
-    #         value = float(value) * pi / 180
-    #         cosx = cos(value)
-    #         sinx = sin(value)
-    #         R = np.array([[cosx, 0, -sinx], [0, 1, 0], [sinx, 0, cosx]])
-    #         proj = np.dot(proj, R)
-    #     elif key == "rotatez":
-    #         logger.warning(
-    #             "The rotatez option is deprecated. Use rotate option instead."
-    #         )
-    #         value = float(value) * pi / 180
-    #         cosx = cos(value)
-    #         sinx = sin(value)
-    #         R = np.array([[cosx, sinx, 0], [-sinx, cosx, 0], [0, 0, 1]])
-    #         proj = np.dot(proj, R)
-    #     elif key == "rotate":
-    #         values = value.split(",")
-    #         for value in values:
-    #             axis = value[0]
-    #             angle = radians(float(value[1:]))
-    #             cosx = cos(angle)
-    #             sinx = sin(angle)
-    #             if axis in "xX":
-    #                 R = np.array([[1, 0, 0], [0, cosx, sinx], [0, -sinx, cosx]])
-    #             elif axis in "yY":
-    #                 R = np.array([[cosx, 0, -sinx], [0, 1, 0], [sinx, 0, cosx]])
-    #             elif axis in "zZ":
-    #                 R = np.array([[cosx, sinx, 0], [-sinx, cosx, 0], [0, 0, 1]])
-    #             else:
-    #                 assert False, "  Wrong options."
-    #             proj = np.dot(proj, R)
-    #     elif key == "shadow":
-    #         if value is True:
-    #             shadow = "#8881"
-    #         else:
-    #             shadow = value
-    #     elif key == "H":
-    #         if value is True:
-    #             hydrogen = 0.6
-    #             HB = 0.2
-    #         else:
-    #             hydrogen = float(value)
-    #     elif key == "HB":
-    #         HB = float(value)
-    #     elif key == "O":
-    #         oxygen = float(value)
-    #     elif key == "OH":
-    #         if value is True:
-    #             OH = 0.5
-    #         else:
-    #             OH = float(value)
-    #     elif key == "bg":
-    #         bgcolor = value
-    #     elif key == "width":
-    #         width = int(value)
-    #     elif key == "height":
-    #         height = int(value)
-    #     elif key == "margin":
-    #         margin = int(value)
-    #     elif key == "encode":
-    #         encode = bool(value)
-    #     elif value is True:
-    #         a = key
-    #         logger.info("  Flags: {0}".format(a))
-    #         if a == "polygon":
-    #             poly = True
-    #         elif a == "arrows":
-    #             arrows = True
-    #         else:
-    #             raise ValueError(f"  Wrong options: {a}")
-    #     else:
-    #         unprocessed[key] = value
-    #     width -= margin * 2
-    #     height -= margin * 2
+def _default_rotate():
+    """parse_options で rotate が渡されない場合のデフォルト回転行列。"""
+    return rotation_processor(("x0",))
 
-    # kwargs.clear()
-    # kwargs |= unprocessed
-    # logger.info(kwargs)
-    # return Options(
-    #     encode=encode,
-    #     poly=poly,
-    #     shadow=shadow,
-    #     oxygen=oxygen,
-    #     HB=HB,
-    #     OH=OH,
-    #     hydrogen=hydrogen,
-    #     arrows=arrows,
-    #     bgcolor=bgcolor,
-    #     proj=proj,
-    #     width=width,
-    #     height=height,
-    #     margin=margin,
-    #     unprocessed=unprocessed,
-    # )
-    if options.shadow is True:
-        options.shadow = "#8881"
-
-    logger.info(f"options.rotate: {options.rotate}")
-    for value in options.rotate:
-        axis = value[0]
-        angle = radians(float(value[1:]))
-        cosx = cos(angle)
-        sinx = sin(angle)
-        if axis in "xX":
-            R = np.array([[1, 0, 0], [0, cosx, sinx], [0, -sinx, cosx]])
-        elif axis in "yY":
-            R = np.array([[cosx, 0, -sinx], [0, 1, 0], [sinx, 0, cosx]])
-        elif axis in "zZ":
-            R = np.array([[cosx, sinx, 0], [-sinx, cosx, 0], [0, 0, 1]])
-        else:
-            raise ValueError(f"  Wrong options: {value}")
-        options.rotate = options.rotate @ R
-
-    if options.unprocessed:
-        logger.warning(f"Unprocessed options: {options.unprocessed}")
-        for key, value in options.unprocessed.items():
-            logger.warning(f"  {key}: {value}")
-    if options.width > 0:
-        options.width = int(options.width)
-    if options.height > 0:
-        options.height = int(options.height)
-    return options
 
 @dataclass
 class Options:
-    rotate: tuple =("x0",)
+    rotate: np.ndarray = field(default_factory=_default_rotate)
     O: float = 0.06
     H: float = 0   
     HB: float = 0.4

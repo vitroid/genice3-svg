@@ -3,24 +3,14 @@
 GenIce format plugin to generate a PNG file.
 
 Usage:
-    % genice2 CS2 -r 3 3 3 -f png[shadow:bg=#f00] > CS2.png
+    % genice3 CS2 -r 3 3 3 -e png[shadow,bgcolor=#f00] > CS2.png
 
 Options:
-    rotatex=30
-    rotatey=30
-    rotatez=30
-    shadow         Draw shadows behind balls.
-    bg=#f00        Specify the background color.
-    H=0            Size of the hydrogen atom (relative to that of oxygen)
-    O=0.06         Size of the oxygen atom in nm.
-    HB=0.4         Radius of HB relative to that of oxygen
-    OH=0.5         Radius of OH colvalent bond relative to that of oxygen
-    width=0        (Pixel)
-    height=0       (Pixel)
+    svg プラグインと同じオプション（rotate, polygon, arrows, shadow, bgcolor, O, H, HB, OH, width, height, margin）
 """
 
-
 from genice3_svg.exporter.svg import (
+    Options,
     parse_options,
     render_atomic_sites,
     render_lattice_sites,
@@ -37,21 +27,19 @@ desc = {
 }
 
 
-
-
 def dumps(genice: GenIce3, **kwargs):
-    kwargs["encode"] = False
-    options = parse_options(**kwargs)
+    """
+    PNG 形式で出力。CLI からは parse_options の処理済み辞書が **kwargs で渡される。
+    """
+    options = Options(**kwargs, encode=False)
     renderer = Render
-    if options.hydrogen > 0 or options.arrows:
+    if options.H > 0 or options.arrows:
         return render_atomic_sites(genice, renderer, options)
     else:
         return render_lattice_sites(genice, renderer, options)
 
 
-def dump(genice: GenIce3, file=sys.stdout, **kwargs):
-    kwargs["encode"] = True
-    # dumpsの返すImageをbinaryデータとして書き込みたい。
+def dump(genice: GenIce3, file: TextIOWrapper = sys.stdout, **kwargs):
     image = dumps(genice, **kwargs)
     image.save(file, format="PNG")
 
