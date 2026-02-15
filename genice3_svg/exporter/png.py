@@ -29,9 +29,10 @@ desc = {
 
 def dumps(genice: GenIce3, **kwargs):
     """
-    PNG 形式で出力。CLI からは parse_options の処理済み辞書が **kwargs で渡される。
+    PNG 形式で出力。API/CLI の両方で parse_options で正規化してから Options に渡す。
     """
-    options = Options(**kwargs, encode=False)
+    processed, _ = parse_options(kwargs)
+    options = Options(**processed, encode=False)
     renderer = Render
     if options.H > 0 or options.arrows:
         return render_atomic_sites(genice, renderer, options)
